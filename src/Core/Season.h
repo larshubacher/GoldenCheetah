@@ -21,6 +21,7 @@
 
 #include <QString>
 #include <QDate>
+#include <QMap>
 #include <QCoreApplication>
 #include <QUuid>
 
@@ -35,13 +36,16 @@ class SeasonEvent
     public:
         static QStringList priorityList();
 
-        SeasonEvent(QString name, QDate date, int priority=0, QString description="", QString id="");
+        SeasonEvent(QString name, QDate date, int priority=0, QString description="", QString id="", int targetLTS=0, int targetCP=0, int targetFTP=0);
 
         QString name;
         QDate date;
         int priority;
         QString description;
         QString id; // unique id
+        int targetLTS = 0;
+        int targetCP = 0;
+        int targetFTP = 0;
 };
 
 
@@ -133,6 +137,33 @@ class Season
         static QList<QString> types;
         enum SeasonType { season=0, cycle=1, adhoc=2, temporary=3 };
 
+        enum class ModelType : int {
+            none = -1,
+            coggan,
+            skiba
+        };
+
+        static QString modelToString(ModelType status) {
+            switch (status) {
+                case ModelType::coggan:
+                    return QStringLiteral("coggan");
+                case ModelType::skiba:
+                    return QStringLiteral("skiba");
+                default:
+                    return QStringLiteral("none");
+            }
+        }
+
+        static ModelType modelFromString(const QString &str) {
+            if (str == QStringLiteral("coggan")) {
+                return ModelType::coggan;
+            } else if (str == QStringLiteral("skiba")) {
+                return ModelType::skiba;
+            } else {
+                return ModelType::none;
+            }
+        }
+
         Season();
 
         void resetTimeRange();
@@ -150,16 +181,26 @@ class Season
 
         void setId(QUuid x) { _id = x; }
         QUuid id() const { return _id; }
+        QString idString() const { return _id.toString(); }
 
-        void setType(int _type);
+        virtual void setType(int _type);
         int getType() const;
+        virtual QString getTypeString() const;
+
+        bool isMacrocycle() const;
+
+        void setModelType(ModelType modeltype);
+        ModelType getModelType() const;
+
+        void setFirstDayOfWeek(Qt::DayOfWeek dow);
+        Qt::DayOfWeek getFirstDayOfWeek() const;
 
         // make the season fixed (by invalidating _offsetStart and _length)
         // and set the limits of a fixed season
-        void setAbsoluteStart(QDate _start);
+        virtual void setAbsoluteStart(QDate _start);
         QDate getAbsoluteStart() const;
 
-        void setAbsoluteEnd(QDate _end);
+        virtual void setAbsoluteEnd(QDate _end);
         QDate getAbsoluteEnd() const;
 
         void setOffsetStart(int offsetYears, int offsetMonths, int offsetWeeks, bool align = true);
@@ -189,19 +230,17 @@ class Season
         void setYtd();
         bool isYtd() const;
 
-        void setSeed(int x) { _seed = x; }
-        int getSeed() const { return _seed; }
+        void setSeed(int x);
+        int getSeed() const;
 
-        void setLow(int x) { _low = x; }
-        int getLow() const { return _low; }
+        void setDescription(const QString &desc) { _description = desc; }
+        QString getDescription() const { return _description; }
 
         bool isAbsolute() const;
         bool hasPhaseOrEvent() const;
         bool canHavePhasesOrEvents() const;
 
         static bool LessThanForStarts(const Season &a, const Season &b);
-
-        QVector<int> &load() { return _load; }
 
         QList<Phase> phases;
         QList<SeasonEvent> events;
@@ -217,8 +256,176 @@ class Season
         SeasonLength _length; // length (relative season)
         bool _ytd = false;
         int _seed = 0;
-        int _low = -50; // low point for SB .. default to -50
-        QVector<int> _load; // array of daily planned load
+        QString _description;
+
+        ModelType _model = ModelType::none;
+        Qt::DayOfWeek _firstDayOfWeek = Qt::Monday;
+};
+
+
+class Microcycle
+{
+public:
+    Microcycle(int freq = 0, int load = 0, float intensity = 0.0f, int time = 0, const QString &description = "");
+
+    bool setFrequency(int freq);
+    int getFrequency() const;
+
+    bool setLoad(int load);
+    int getLoad() const;
+
+    bool setIntensity(float intensity);
+    float getIntensity() const;
+
+    bool setTime(int time);
+    int getTime() const;
+
+    void setDescription(const QString &description);
+    QString getDescription() const;
+
+private:
+    int freq = 0;
+    int load = 0;
+    float intensity = 0.0f;
+    int time = 0;
+    QString desc;
+};
+
+
+class Slot
+{
+public:
+    enum class StatusType : int {
+        generated = 0,
+        adjusted
+    };
+
+    static QString statusToString(StatusType status);
+    static StatusType stringToStatus(const QString &str);
+
+    Slot(int dayOffset = 0, const QString &sport = "", const StatusType status = StatusType::generated, int load = 0, float intensity = 0.0f, int time = 0, const QString &description = "");
+
+    bool setDayOffset(int offset);
+    int getDayOffset() const;
+
+    bool setSport(const QString &sport);
+    QString getSport() const;
+
+    bool setStatus(const StatusType &status);
+    StatusType getStatus() const;
+
+    bool setLoad(int load);
+    int getLoad() const;
+    bool hasLoad() const;
+
+    bool setIntensity(float intensity);
+    float getIntensity() const;
+    bool hasIntensity() const;
+
+    bool setTime(int time);
+    int getTime() const;
+    bool hasTime() const;
+
+    bool setDescription(const QString &description);
+    QString getDescription() const;
+    bool hasDescription() const;
+
+    const QVarLengthArray<QString, 1> &getActivities() const;
+    bool hasActivity(const QString &id) const;
+    void addActivity(const QString &id);
+    void setActivities(const QStringList &ids);
+    bool removeActivity(const QString &id);
+    void clearActivities();
+
+private:
+    int dayOffset = 0;
+    QString sport;
+    StatusType status = StatusType::generated;
+    int load = 0;
+    float intensity = 0;
+    int time = 0;
+    QString description;
+    QVarLengthArray<QString, 1> activityIds;
+};
+
+
+class Mesocycle {
+public:
+    bool setStart(const QDate &date);
+
+    ////////////////////////////////////////////////////////////
+    // mesocycles targets
+    void setTargetLTS(int targetLTS);
+    int getTargetLTS() const;
+
+    void setTargetCP(int targetCP);
+    int getTargetCP() const;
+
+    void setTargetFTP(int targetFTP);
+    int getTargetFTP() const;
+
+    ////////////////////////////////////////////////////////////
+    // microcycles and their aggregates
+    int toMicrocycle(const QDate &date) const;
+    int toMicrocycle(int offset) const;
+    bool setMaxMicrocycles(int maxMicrocycles);
+    int getMaxMicrocycles() const;
+
+    bool hasMicrocycle(int microcycle) const;
+    Microcycle *getMicrocycle(int microcycle);
+    Microcycle const *getMicrocycle(int microcycle) const;
+
+    int getMicrocyclesFrequency() const;
+    int getMicrocyclesLoad() const;
+    float getMicrocyclesIntensity() const;
+    int getMicrocyclesTime() const;
+
+    ////////////////////////////////////////////////////////////
+    // slots and their targets (aggregated or singular)
+    int getSlottedFrequency() const;
+    int getSlottedFrequency(const QString &sport) const;
+    int getSlottedFrequency(int microcycle) const;
+    int getSlottedFrequency(int microcycle, const QString &sport) const;
+
+    int getSlottedLoad() const;
+    int getSlottedLoad(const QString &sport) const;
+    int getSlottedLoad(int microcycle) const;
+    int getSlottedLoad(int microcycle, const QString &sport) const;
+
+    float getSlottedIntensity() const;
+    float getSlottedIntensity(const QString &sport) const;
+    float getSlottedIntensity(int microcycle) const;
+    float getSlottedIntensity(int microcycle, const QString &sport) const;
+
+    int getSlottedTime() const;
+    int getSlottedTime(const QString &sport) const;
+    int getSlottedTime(int microcycle) const;
+    int getSlottedTime(int microcycle, const QString &sport) const;
+
+    bool hasSlot(const QDate &when, const QString &sport) const;
+    bool hasSlot(int offset, const QString &sport) const;
+    Slot *getSlot(const QDate &when, const QString &sport);
+    Slot const *getSlot(const QDate &when, const QString &sport) const;
+    Slot *getSlot(int offset, const QString &sport);
+    Slot const *getSlot(int offset, const QString &sport) const;
+    Slot *addSlot(const QDate &when, const QString &sport);
+    Slot *addSlot(int offset, const QString &sport);
+    void delSlot(int offset, const QString &sport);
+    QMap<QString, QList<int>> getSlotSportOffsets() const;
+    QMap<QString, QList<QDate>> getSlotSportDates() const;
+    QMap<int, QList<QString>> getSlotOffsetSports() const;
+    QMap<QDate, QList<QString>> getSlotDateSports() const;
+    QSet<QString> getSlottedSports() const;
+
+private:
+    QDate start;
+    int targetLTS = 0;
+    int targetCP = 0;
+    int targetFTP = 0;
+    int maxMicrocycles = 0;
+    Microcycle dummyMicrocycle;
+    QMap<int, Microcycle> microcycles;
+    QList<Slot> slots_;
 };
 
 
@@ -228,11 +435,25 @@ class Phase : public Season
 
     public:
         static QList<QString> types;
-        enum PhaseType { phase=100, prep=101, base=102, build=103, peak=104, camp=120 };
+        enum PhaseType { phase=100, prep=101, base=102, build=103, peak=104, camp=120, mesocycle=121 };
 
         Phase();
         Phase(QString _name, QDate _start, QDate _end);
 
+        void setType(int _type) override;
+        QString getTypeString() const override;
+        void setAbsoluteStart(QDate _start) override;
+        void setAbsoluteEnd(QDate _end) override;
+
+        bool hasMesocycle() const;
+        Mesocycle *getMesocycle();
+        Mesocycle const *getMesocycle() const;
+        int numMicrocycles() const;
+
+    private:
+        std::optional<Mesocycle> _mesocycle;
+
+        Mesocycle *addMesocycle();
 };
 
 #endif /* SEASON_H_ */

@@ -5,7 +5,7 @@
 #                                                                             #
 ###############################################################################
 
-!versionAtLeast(QT_VERSION, 6.5.3):error("Use at least Qt version 6.5.3")
+!versionAtLeast(QT_VERSION, 6.8.3):error("Use at least Qt version 6.8.3")
 
 ###==========================
 ### IMPORT USER CONFIGURATION
@@ -38,7 +38,7 @@ CONFIG(debug, debug|release) { QMAKE_CXXFLAGS += -DGC_DEBUG }
 # always
 QT += xml sql network svg  widgets concurrent serialport multimedia multimediawidgets \
       webenginecore webenginewidgets webchannel positioning webenginequick core5compat
-CONFIG += c++17
+CONFIG += c++20
 
 ###=======================================================================
 ### Directory Structure - Split into subdirs to be more manageable
@@ -134,20 +134,13 @@ macx {
     # on mac we use native buttons and video, but have native fullscreen support
     LIBS    += -lobjc -framework IOKit -framework AppKit
 
-    # GC_VIDEO_QT6 will enable Qt6 video support,
-    # GC_VIDEO_VLC will enable VLC video support,
-    # otherwise we have a blank videowindow, it will do nothing
-    HEADERS += Train/VideoWindow.h
-    SOURCES += Train/VideoWindow.cpp
 } else {
+
     # not on mac we need our own full screen support and segment control button
     HEADERS += Gui/QTFullScreen.h
     SOURCES += Gui/QTFullScreen.cpp
 
-    HEADERS += Train/VideoWindow.h
-    SOURCES += Train/VideoWindow.cpp
 }
-
 
 
 # X11
@@ -398,22 +391,6 @@ contains(DEFINES, "GC_WANT_GOOGLECAL") {
 }
 
 
-###=============================================================
-### OPTIONAL => VLC [Windows, Unix and OSX]
-###=============================================================
-
-!isEmpty(VLC_INSTALL) {
-
-    # we will work out the rest if you tell use where it is installed
-    isEmpty(VLC_INCLUDE) { VLC_INCLUDE = $${VLC_INSTALL}/include }
-    isEmpty(VLC_LIBS)    { VLC_LIBS    = -L$${VLC_INSTALL}/lib -lvlc }
-
-    DEFINES     += GC_HAVE_VLC
-    INCLUDEPATH += $${VLC_INCLUDE}
-    LIBS        += $${VLC_LIBS}
-}
-
-
 ###=======================
 ### OPTIONAL => SAMPLERATE
 ###=======================
@@ -471,7 +448,7 @@ SOURCES +=  $$HTPATH/httpglobal.cpp \
 ## CloudDB is only supported on QT6.5.3 or higher ##
 ##------------------------------------------------##
 
-notsupported = "INFO: CloudDB requires version QT >= 6.5.3, no support for"
+notsupported = "INFO: CloudDB requires version QT >= 6.8.3, no support for"
 notsupported += $${QT_VERSION}
 
 equals(CloudDB, active) {
@@ -518,6 +495,10 @@ SOURCES += Cloud/TredictWorkoutDownload.cpp
 HEADERS += Cloud/TredictWorkoutDownload.h
 SOURCES += Cloud/TredictMeasuresDownload.cpp
 HEADERS += Cloud/TredictMeasuresDownload.h
+SOURCES += Cloud/Wahoo.cpp
+HEADERS += Cloud/Wahoo.h
+SOURCES += Cloud/WahooClient.cpp
+HEADERS += Cloud/WahooClient.h
 
 SOURCES += Train/MonarkController.cpp Train/MonarkConnection.cpp
 HEADERS += Train/MonarkController.h Train/MonarkConnection.h
@@ -601,7 +582,7 @@ HEADERS += Charts/Aerolab.h Charts/AerolabWindow.h Charts/AllPlot.h Charts/AllPl
 HEADERS += Cloud/CloudService.h \
            Cloud/LocalFileStore.h Cloud/OAuthDialog.h \
            Cloud/WithingsDownload.h Cloud/Strava.h Cloud/CyclingAnalytics.h Cloud/RideWithGPS.h \
-           Cloud/TrainingsTageBuch.h Cloud/Selfloops.h Cloud/SportsPlusHealth.h \
+           Cloud/Selfloops.h Cloud/SportsPlusHealth.h \
            Cloud/AddCloudWizard.h Cloud/Withings.h Cloud/MeasuresDownload.h Cloud/Xert.h \
            Cloud/Azum.h
 
@@ -686,8 +667,8 @@ HEADERS += Train/TrainBottom.h Train/TrainDB.h Train/TrainSidebar.h \
            Train/InfoWidget.h Train/PowerInfoWidget.h Train/PowerZonesWidget.h Train/RatingWidget.h \
            Train/ErgOverview.h Train/Shy.h \
            Train/WorkoutTagWrapper.h \
-           Train/MenuProvider.h Train/WorkoutMenuProvider.h
-
+           Train/MenuProvider.h Train/WorkoutMenuProvider.h \
+           Train/VideoWindow.h Train/VideoHtmlWindow.h
 
 ###=============
 ### SOURCE FILES
@@ -713,7 +694,7 @@ SOURCES += Charts/Aerolab.cpp Charts/AerolabWindow.cpp Charts/AllPlot.cpp Charts
 SOURCES += Cloud/CloudService.cpp \
            Cloud/LocalFileStore.cpp Cloud/OAuthDialog.cpp \
            Cloud/WithingsDownload.cpp Cloud/Strava.cpp Cloud/CyclingAnalytics.cpp Cloud/RideWithGPS.cpp \
-           Cloud/TrainingsTageBuch.cpp Cloud/Selfloops.cpp Cloud/SportsPlusHealth.cpp \
+           Cloud/Selfloops.cpp Cloud/SportsPlusHealth.cpp \
            Cloud/AddCloudWizard.cpp Cloud/Withings.cpp Cloud/MeasuresDownload.cpp Cloud/Xert.cpp \
            Cloud/Azum.cpp
 
@@ -804,7 +785,8 @@ SOURCES += Train/TrainBottom.cpp Train/TrainDB.cpp Train/TrainSidebar.cpp \
            Train/InfoWidget.cpp Train/PowerInfoWidget.cpp Train/PowerZonesWidget.cpp Train/RatingWidget.cpp \
            Train/ErgOverview.cpp Train/Shy.cpp \
            Train/WorkoutTagWrapper.cpp \
-           Train/WorkoutMenuProvider.cpp
+           Train/WorkoutMenuProvider.cpp \
+           Train/VideoWindow.cpp Train/VideoHtmlWindow.cpp
 
 ## Crash Handling
 win32-msvc* {

@@ -247,7 +247,7 @@ main(int argc, char *argv[])
 #endif
 #ifdef GC_DEBUG
     bool debug = true;
-    QString debugFormat = QString("[%{time h:mm:ss.zzz}] %{type}: %{message} (%{file}:%{line})");
+    QString debugFormat = QString("[%{time h:mm:ss.zzz}] %{type} [%{function}]: %{message} (%{file}:%{line})");
 #else
     bool debug = false;
     QString debugFormat = QString("[%{time h:mm:ss.zzz}] %{type}: %{message}");
@@ -448,7 +448,7 @@ main(int argc, char *argv[])
     dpiXFactor = defaults.xfactor;
     dpiYFactor = defaults.yfactor;
 
-#ifndef Q_OS_MAC // not needed on a Mac
+#ifndef Q_OS_MACOS // not needed on a Mac
 
     application->setStyleSheet(QString("QPushButton { padding-left: %1px; padding-right: %1px; "
                                        "              padding-top: %2px; padding-bottom: %2px; }"

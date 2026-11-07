@@ -20,6 +20,8 @@
 #include "Seasons.h"
 #include "Athlete.h"
 #include "Colors.h"
+#include "ActionButtonBox.h"
+#include "RideMetadata.h"
 
 #include <QString>
 #include <QFormLayout>
@@ -35,6 +37,28 @@ EditSeasonDialog::EditSeasonDialog
 : QDialog(context->mainWindow, Qt::Dialog), context(context), season(season)
 {
     setWindowTitle(tr("Edit Date Range"));
+    setMinimumSize(400 * dpiXFactor, 600 * dpiYFactor);
+
+    if (season->hasPhaseOrEvent()) {
+        for (const Phase &phase : season->phases) {
+            if (! firstChildStart.isValid()) {
+                firstChildStart = phase.getStart();
+                lastChildEnd = phase.getEnd();
+            } else {
+                firstChildStart = std::min(firstChildStart, phase.getStart());
+                lastChildEnd = std::max(lastChildEnd, phase.getEnd());
+            }
+        }
+        for (const SeasonEvent &event : season->events) {
+            if (! firstChildStart.isValid()) {
+                firstChildStart = event.date;
+                lastChildEnd = event.date;
+            } else {
+                firstChildStart = std::min(firstChildStart, event.date);
+                lastChildEnd = std::max(lastChildEnd, event.date);
+            }
+        }
+    }
 
     nameEdit = new QLineEdit();
 
@@ -52,6 +76,9 @@ EditSeasonDialog::EditSeasonDialog
 
     startAbsoluteEdit = new QDateEdit();
     startAbsoluteEdit->setCalendarPopup(true);
+    if (firstChildStart.isValid()) {
+        startAbsoluteEdit->setMaximumDate(firstChildStart);
+    }
     startValueStack->addWidget(startAbsoluteEdit);
 
     QWidget *startRelative = new QWidget();
@@ -106,6 +133,9 @@ EditSeasonDialog::EditSeasonDialog
 
     endAbsoluteEdit = new QDateEdit();
     endAbsoluteEdit->setCalendarPopup(true);
+    if (lastChildEnd.isValid()) {
+        endAbsoluteEdit->setMinimumDate(lastChildEnd);
+    }
     endValueStack->addWidget(endAbsoluteEdit);
 
     QWidget *endRelative = new QWidget();
@@ -164,12 +194,8 @@ EditSeasonDialog::EditSeasonDialog
     seedEdit->setWrapping(true);
     seedEdit->setAlignment(Qt::AlignLeft);
 
-    lowEdit = new QDoubleSpinBox();
-    lowEdit->setDecimals(0);
-    lowEdit->setRange(-500, 0);
-    lowEdit->setSingleStep(1.0);
-    lowEdit->setWrapping(true);
-    lowEdit->setAlignment(Qt::AlignLeft);
+    descriptionEdit = new QTextEdit();
+    descriptionEdit->setPlaceholderText(tr("Description..."));
 
     QDialogButtonBox *buttonBox = new QDialogButtonBox();
     applyButton = buttonBox->addButton(tr("&OK"), QDialogButtonBox::AcceptRole);
@@ -181,8 +207,16 @@ EditSeasonDialog::EditSeasonDialog
     formLayout->addRow(startCombo, startValueStack);
     formLayout->addRow(endCombo, endValueStack);
     formLayout->addRow(tr("As of today"), statusLabel);
+    if (firstChildStart.isValid()) {
+        QLocale locale;
+        formLayout->addRow(tr("Phases && Events cover"),
+                           new QLabel(tr("%1 - %2")
+                                        .arg(locale.toString(firstChildStart, QLocale::NarrowFormat))
+                                        .arg(locale.toString(lastChildEnd, QLocale::NarrowFormat))));
+    }
     formLayout->addRow(tr("Starting LTS"), seedEdit);
-    formLayout->addRow(tr("Lowest SB"), lowEdit);
+    formLayout->addItem(new QSpacerItem(0, 10 * dpiYFactor, QSizePolicy::Ignored, QSizePolicy::Fixed));
+    formLayout->addRow(descriptionEdit);
     formLayout->addRow(warningLabel);
     formLayout->addRow(buttonBox);
 
@@ -261,7 +295,7 @@ EditSeasonDialog::updateAllowedCombinations
     }
 
     // Disable relative ranges if Phases or Events are associated with this season
-    if (! season->hasPhaseOrEvent()) {
+    if (season->hasPhaseOrEvent()) {
         setEnabledItem(startCombo, relative, false);
         setEnabledItem(endCombo, relative, false);
         setEnabledItem(endCombo, ytd, false);
@@ -306,11 +340,21 @@ EditSeasonDialog::updateTimeRange
     transferUIToSeason(season);
     QDate start = season.getStart();
     QDate end = season.getEnd();
-    statusLabel->setText(tr("%1 - %2").arg(start.toString(tr("dd MMM yyyy"))).arg(end.toString(tr("dd MMM yyyy"))));
+    QLocale locale;
+    statusLabel->setText(tr("%1 - %2").arg(locale.toString(start, QLocale::NarrowFormat)).arg(locale.toString(end, QLocale::NarrowFormat)));
+    QStringList warningTexts;
     if (start > end) {
-        warningLabel->setText(tr("<b>WARNING</b> Start is after end, season will be empty"));
-    } else {
+        warningTexts << tr("The start date is after the end date, so the season will be empty");
+    }
+    if (firstChildStart.isValid() && (start > firstChildStart || end < lastChildEnd)) {
+        warningTexts << tr("The season range must cover all of its phases and events");
+    }
+    if (warningTexts.isEmpty()) {
         warningLabel->clear();
+        applyButton->setEnabled(true);
+    } else {
+        warningLabel->setText("<b>" + tr("WARNING") + "</b><br>" + warningTexts.join("<br>"));
+        applyButton->setEnabled(false);
     }
 }
 
@@ -324,7 +368,7 @@ EditSeasonDialog::transferUIToSeason
     season.setName(nameEdit->text());
     season.setType(typeCombo->itemData(typeCombo->currentIndex()).toInt());
     season.setSeed(seedEdit->value());
-    season.setLow(lowEdit->value());
+    season.setDescription(descriptionEdit->toPlainText());
 
     int years;
     int months;
@@ -423,7 +467,7 @@ EditSeasonDialog::transferSeasonToUI
     }
 
     seedEdit->setValue(season.getSeed());
-    lowEdit->setValue(season.getLow());
+    descriptionEdit->setText(season.getDescription());
 }
 
 
@@ -475,23 +519,39 @@ EditSeasonEventDialog::EditSeasonEventDialog(Context *context, SeasonEvent *even
     QDialog(context->mainWindow, Qt::Dialog), context(context), event(event)
 {
     setWindowTitle(tr("Edit Event"));
+    setMinimumSize(400 * dpiXFactor, 300 * dpiYFactor);
 
-    QLabel *seasonLabel = new QLabel();
-    seasonLabel->setText(season.getName());
-
-    nameEdit = new QLineEdit(this);
+    nameEdit = new QLineEdit();
     nameEdit->setText(event->name);
 
-    dateEdit = new QDateEdit(this);
+    dateEdit = new QDateEdit();
     dateEdit->setDateRange(season.getStart(), season.getEnd());
     dateEdit->setDate(event->date);
     dateEdit->setCalendarPopup(true);
 
-    priorityEdit = new QComboBox(this);
+    priorityEdit = new QComboBox();
     foreach(QString priority, SeasonEvent::priorityList()) priorityEdit->addItem(priority);
     priorityEdit->setCurrentIndex(event->priority);
 
-    descriptionEdit = new QTextEdit(this);
+    targetLTSEdit = new QSpinBox();
+    targetLTSEdit->setMinimum(0);
+    targetLTSEdit->setMaximum(200);
+    targetLTSEdit->setValue(event->targetLTS);
+
+    targetCPEdit = new QSpinBox();
+    targetCPEdit->setMinimum(0);
+    targetCPEdit->setMaximum(500);
+    targetCPEdit->setSuffix(" " + tr("W"));
+    targetCPEdit->setValue(event->targetCP);
+
+    targetFTPEdit = new QSpinBox();
+    targetFTPEdit->setMinimum(0);
+    targetFTPEdit->setMaximum(500);
+    targetFTPEdit->setSuffix(" " + tr("W"));
+    targetFTPEdit->setValue(event->targetFTP);
+
+    descriptionEdit = new QTextEdit();
+    descriptionEdit->setPlaceholderText(tr("Description..."));
     descriptionEdit->setText(event->description);
 
     QDialogButtonBox *buttonBox = new QDialogButtonBox();
@@ -499,11 +559,21 @@ EditSeasonEventDialog::EditSeasonEventDialog(Context *context, SeasonEvent *even
     QPushButton *cancelButton = buttonBox->addButton(tr("&Cancel"), QDialogButtonBox::RejectRole);
 
     QFormLayout *formLayout = newQFormLayout(this);
-    formLayout->addRow(tr("Season"), seasonLabel);
+    formLayout->addRow(new QLabel("<h4>" + tr("Season %1").arg(season.getName()) + "</h4>"));
+    formLayout->addItem(new QSpacerItem(0, 10 * dpiYFactor, QSizePolicy::Ignored, QSizePolicy::Fixed));
     formLayout->addRow(tr("Name"), nameEdit);
     formLayout->addRow(tr("Date"), dateEdit);
     formLayout->addRow(tr("Priority"), priorityEdit);
-    formLayout->addRow(tr("Description"), descriptionEdit);
+
+    formLayout->addItem(new QSpacerItem(0, 10 * dpiYFactor, QSizePolicy::Ignored, QSizePolicy::Fixed));
+    formLayout->addRow(new QLabel("<h5>" + tr("Target values")  + "</h5>"));
+    formLayout->addRow(tr("LTS"), targetLTSEdit);
+    formLayout->addRow(tr("CP"), targetCPEdit);
+    formLayout->addRow(tr("FTP"), targetFTPEdit);
+
+    formLayout->addItem(new QSpacerItem(0, 10 * dpiYFactor, QSizePolicy::Ignored, QSizePolicy::Fixed));
+    formLayout->addRow(descriptionEdit);
+    formLayout->addItem(new QSpacerItem(0, 10 * dpiYFactor, QSizePolicy::Ignored, QSizePolicy::Fixed));
     formLayout->addRow(buttonBox);
 
     // connect up slots
@@ -523,6 +593,9 @@ EditSeasonEventDialog::applyClicked()
     event->date = dateEdit->date();
     event->priority = priorityEdit->currentIndex();
     event->description = descriptionEdit->toPlainText();
+    event->targetLTS = targetLTSEdit->value();
+    event->targetCP = targetCPEdit->value();
+    event->targetFTP = targetFTPEdit->value();
     accept();
 }
 
@@ -546,6 +619,7 @@ EditPhaseDialog::EditPhaseDialog(Context *context, Phase *phase, Season &season)
     QDialog(context->mainWindow, Qt::Dialog), context(context), phase(phase)
 {
     setWindowTitle(tr("Edit Date Range"));
+    setMinimumSize(400 * dpiXFactor, 400 * dpiYFactor);
 
     QLabel *seasonLabel = new QLabel();
     seasonLabel->setText(season.getName());
@@ -559,7 +633,16 @@ EditPhaseDialog::EditPhaseDialog(Context *context, Phase *phase, Season &season)
     typeEdit->addItem(tr("Base"),  Phase::base);
     typeEdit->addItem(tr("Build"), Phase::build);
     typeEdit->addItem(tr("Camp"), Phase::camp);
+    typeEdit->addItem(tr("Mesocycle"), Phase::mesocycle);
     typeEdit->setCurrentIndex(typeEdit->findData(phase->getType()));
+
+    QStandardItemModel *model = qobject_cast<QStandardItemModel *>(typeEdit->model());
+    if (model) {
+        QStandardItem *item = model->item(typeEdit->findData(Phase::mesocycle));
+        if (item) {
+            item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+        }
+    }
 
     fromEdit = new QDateEdit();
     fromEdit->setDateRange(season.getStart(), phase->getEnd().isValid() ? phase->getEnd().addDays(-1) : season.getEnd());
@@ -571,34 +654,30 @@ EditPhaseDialog::EditPhaseDialog(Context *context, Phase *phase, Season &season)
     toEdit->setDate(phase->getEnd());
     toEdit->setCalendarPopup(true);
 
-    seedEdit = new QDoubleSpinBox();
-    seedEdit->setDecimals(0);
-    seedEdit->setRange(0.0, 300.0);
-    seedEdit->setSingleStep(1.0);
-    seedEdit->setWrapping(true);
-    seedEdit->setAlignment(Qt::AlignLeft);
-    seedEdit->setValue(phase->getSeed());
-
-    lowEdit = new QDoubleSpinBox();
-    lowEdit->setDecimals(0);
-    lowEdit->setRange(-500, 0);
-    lowEdit->setSingleStep(1.0);
-    lowEdit->setWrapping(true);
-    lowEdit->setAlignment(Qt::AlignLeft);
-    lowEdit->setValue(phase->getLow());
+    descriptionEdit = new QTextEdit();
+    descriptionEdit->setPlaceholderText(tr("Description..."));
+    descriptionEdit->setText(phase->getDescription());
 
     QDialogButtonBox *buttonBox = new QDialogButtonBox();
     applyButton = buttonBox->addButton(tr("&OK"), QDialogButtonBox::AcceptRole);
     QPushButton *cancelButton = buttonBox->addButton(tr("&Cancel"), QDialogButtonBox::RejectRole);
 
+    if (phase->getType() == Phase::mesocycle || phase->hasMesocycle()) {
+        typeEdit->setEnabled(false);
+        fromEdit->setEnabled(false);
+        toEdit->setEnabled(false);
+    }
+
     QFormLayout *formLayout = newQFormLayout(this);
-    formLayout->addRow(tr("Season"), seasonLabel);
+    formLayout->addRow(new QLabel("<h4>" + tr("Season %1").arg(season.getName()) + "</h4>"));
+    formLayout->addItem(new QSpacerItem(0, 10 * dpiYFactor, QSizePolicy::Ignored, QSizePolicy::Fixed));
     formLayout->addRow(tr("Name"), nameEdit);
     formLayout->addRow(tr("Type"), typeEdit);
     formLayout->addRow(tr("From"), fromEdit);
     formLayout->addRow(tr("To"), toEdit);
-    formLayout->addRow(tr("Starting LTS"), seedEdit);
-    formLayout->addRow(tr("Lowest SB"), lowEdit);
+    formLayout->addItem(new QSpacerItem(0, 10 * dpiYFactor, QSizePolicy::Ignored, QSizePolicy::Fixed));
+    formLayout->addRow(descriptionEdit);
+    formLayout->addItem(new QSpacerItem(0, 10 * dpiYFactor, QSizePolicy::Ignored, QSizePolicy::Fixed));
     formLayout->addRow(buttonBox);
 
     // connect up slots
@@ -620,8 +699,7 @@ EditPhaseDialog::applyClicked()
     phase->setType(typeEdit->itemData(typeEdit->currentIndex()).toInt());
     phase->setAbsoluteStart(fromEdit->date());
     phase->setAbsoluteEnd(toEdit->date());
-    phase->setSeed(seedEdit->value());
-    phase->setLow(lowEdit->value());
+    phase->setDescription(descriptionEdit->toPlainText());
     accept();
 }
 
@@ -646,7 +724,7 @@ SeasonTreeView::SeasonTreeView(Context *context) : context(context)
     setDragDropMode(QAbstractItemView::DragDrop);
     setDefaultDropAction(Qt::MoveAction);
     setDragDropOverwriteMode(true);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     setAttribute(Qt::WA_MacShowFocusRect, 0);
 #endif
 

@@ -58,6 +58,7 @@
 #endif
 #include "UserChartWindow.h"
 #include "HtmlChart.h"
+#include "VideoHtmlWindow.h"
 
 // GcWindows initialization is done in initialize method to enable translations
 GcWindowRegistry* GcWindows;
@@ -111,6 +112,7 @@ GcWindowRegistry::initialize()
     { VIEW_TRAIN, tr("Workout Editor"),GcWindowTypes::WorkoutWindow },
     { VIEW_TRAIN, tr("Live Map"),GcWindowTypes::LiveMapWebPageWindow },
     { VIEW_TRAIN, tr("HTML Chart"),GcWindowTypes::HtmlTraining },
+    { VIEW_TRAIN, tr("Video + HTML"),GcWindowTypes::VideoHtml },
     { VIEW_TRAIN, tr("Elevation Chart"),GcWindowTypes::ElevationChart },
     { VIEW_ANALYSIS|VIEW_TRENDS|VIEW_PLAN|VIEW_TRAIN, tr("Web page"),GcWindowTypes::WebPageWindow },
     { VIEW_TRENDS|VIEW_PLAN, tr("Calendar"),GcWindowTypes::Calendar },
@@ -217,11 +219,7 @@ GcWindowRegistry::newGcWindow(GcWinID id, Context *context)
     case GcWindowTypes::Scatter: returning = new ScatterWindow(context); break;
     case GcWindowTypes::TreeMap: returning = new TreeMapWindow(context); break;
     case GcWindowTypes::WeeklySummary: returning = NULL; break; // deprecated
-#ifdef GC_VIDEO_NONE
-    case GcWindowTypes::VideoPlayer: returning = new GcChartWindow(context); break;
-#else
     case GcWindowTypes::VideoPlayer: returning = new VideoWindow(context); break;
-#endif
     case GcWindowTypes::DialWindow: returning = new DialWindow(context); break;
     case GcWindowTypes::MetadataWindow: returning = new MetadataWindow(context); break;
     case GcWindowTypes::RealtimeControls: returning = new GcChartWindow(context); break;
@@ -243,6 +241,7 @@ GcWindowRegistry::newGcWindow(GcWinID id, Context *context)
     case GcWindowTypes::WebPageWindow: returning = new WebPageWindow(context); break;
     case GcWindowTypes::LiveMapWebPageWindow: returning = new LiveMapWebPageWindow(context); break;
     case GcWindowTypes::HtmlTraining: returning = new HtmlChart(context); break;
+    case GcWindowTypes::VideoHtml: returning = new VideoHtmlWindow(context); break;
     case GcWindowTypes::ElevationChart: returning = new ElevationChartWindow(context); break;
     case GcWindowTypes::RouteSegment: returning = new GcChartWindow(context); break; // Deprecated
 
