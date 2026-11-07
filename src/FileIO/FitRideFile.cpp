@@ -339,7 +339,8 @@ badconfig:
 //             ripe for being refactored. For now we leave it untouched since it
 //             is stable, if a little tedious to maintain. You will notice for
 //             example that there is no FitFileParser header and all the methods
-//             are defined and declared inline below. This makes navigation
+//             are defined and
+//             declared inline below. This makes navigation
 //             harder and breaking into separate source files that little bit harder.
 //
 //             It is not clear why std c containers are used instead of Qt
