@@ -1920,35 +1920,42 @@ struct FitFileParser
             QString name;
             double value=0;
             double scaledvalue=0; //value after scaling is applied
+            QString svalue;
+            bool isString = (field.type==7);
             int idx; // standard field index
             QString key; // developer field key
             FitFieldDefinition metadata;
 
             // XDATA does not really support string data, but the code
             // is misleading on this, it should be fixed in the XDATA code *FIXME*
-            if (field.type == 7) goto genericnext; // can't handle this
+            // if (field.type == 7) goto genericnext; // can't handle this
 
-            switch(field.type) {
-            case 0:
-            case 1:
-            case 2:
-            case 3:
-            case 4:
-            case 5:
-            case 6:
-                    // use the integer value v
-                    if (values[index].v == NA_VALUE) goto genericnext;
-                    value= values[index].v;
-                    break;
-            case 8:
-                    // use the float value f
-                    if (values[index].f == NA_VALUEF) goto genericnext;
-                    value=values[index].f;
-                    break;
-            default:
-                    if (values[index].v == NA_VALUE) goto genericnext;
-                    value=values[index].v; // most likely drop through as type is unreliable
-                break;
+            if (isString) {
+                if (values[index].type != StringValue || values[index].s.empty()) goto genericnext;
+                svalue = QString::fromUtf8(values[index].s.c_str());
+            } else {
+                switch(field.type) {
+                    case 0:
+                    case 1:
+                    case 2:
+                    case 3:
+                    case 4:
+                    case 5:
+                    case 6:
+                        // use the integer value v
+                        if (values[index].v == NA_VALUE) goto genericnext;
+                        value= values[index].v;
+                        break;
+                    case 8:
+                        // use the float value f
+                        if (values[index].f == NA_VALUEF) goto genericnext;
+                        value=values[index].f;
+                        break;
+                    default:
+                        if (values[index].v == NA_VALUE) goto genericnext;
+                        value=values[index].v; // most likely drop through as type is unreliable
+                        break;
+                }
             }
 
             if (field.deve_idx == -1) {
@@ -1970,11 +1977,13 @@ struct FitFileParser
             // if we get here we have metadata about the field in question
             // so lets apply scaling and add to the XDATA section
             scaledvalue = value;
-            if (metadata.scale > 0) scaledvalue /= double(metadata.scale);
+            if (metadata.scale > 0) scaledvalue /= double(metadata.scale);//double(metadata.scale);
 
             // if we get here then the field is going to be transferred into
             // the XDATA section, so lets see if it is a start_time field?
-            if (strcmp(metadata.name.c_str(), "start_time") == 0)  timestamp = value;
+            //if (strcmp(metadata.name.c_str(), "start_time") == 0)  timestamp = value;
+            if (!isString && strcmp(metadata.name.c_str(), "start_time") == 0) timestamp = value;
+
 
             // add the xdata series if not present yet, guarding against hitting the maximum
             if (xdseries->valuename.count() < XDATA_MAXVALUES) {
